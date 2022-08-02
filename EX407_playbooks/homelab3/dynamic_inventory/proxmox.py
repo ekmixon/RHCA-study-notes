@@ -49,10 +49,7 @@ class ProxmoxNodeList(list):
 
 class ProxmoxVM(dict):
     def get_variables(self):
-        variables = {}
-        for key, value in iteritems(self):
-            variables['proxmox_' + key] = value
-        return variables
+        return {f'proxmox_{key}': value for key, value in iteritems(self)}
 
 
 class ProxmoxVMList(list):
@@ -69,14 +66,10 @@ class ProxmoxVMList(list):
 
     def get_by_name(self, name):
         results = [vm for vm in self if vm['name'] == name]
-        return results[0] if len(results) > 0 else None
+        return results[0] if results else None
 
     def get_variables(self):
-        variables = {}
-        for vm in self:
-            variables[vm['name']] = vm.get_variables()
-
-        return variables
+        return {vm['name']: vm.get_variables() for vm in self}
 
 
 class ProxmoxPoolList(list):
@@ -99,25 +92,26 @@ class ProxmoxAPI(object):
         self.options = options
         self.credentials = None
 
-        if not options.url or not options.username or not options.password:
-            if os.path.isfile(config_path):
-                with open(config_path, "r") as config_file:
-                    config_data = json.load(config_file)
-                    if not options.url:
-                        try:
-                            options.url = config_data["url"]
-                        except KeyError:
-                            options.url = None
-                    if not options.username:
-                        try:
-                            options.username = config_data["username"]
-                        except KeyError:
-                            options.username = None
-                    if not options.password:
-                        try:
-                            options.password = config_data["password"]
-                        except KeyError:
-                            options.password = None
+        if (
+            not options.url or not options.username or not options.password
+        ) and os.path.isfile(config_path):
+            with open(config_path, "r") as config_file:
+                config_data = json.load(config_file)
+                if not options.url:
+                    try:
+                        options.url = config_data["url"]
+                    except KeyError:
+                        options.url = None
+                if not options.username:
+                    try:
+                        options.username = config_data["username"]
+                    except KeyError:
+                        options.username = None
+                if not options.password:
+                    try:
+                        options.password = config_data["password"]
+                    except KeyError:
+                        options.password = None
 
         if not options.url:
             raise Exception('Missing mandatory parameter --url (or PROXMOX_URL or "url" key in config file).')
@@ -127,10 +121,10 @@ class ProxmoxAPI(object):
         elif not options.password:
             raise Exception(
                 'Missing mandatory parameter --password (or PROXMOX_PASSWORD or "password" key in config file).')
-        
+
         # URL should end with a trailing slash
         if not options.url.endswith("/"):
-            options.url = options.url + "/"
+            options.url = f"{options.url}/"
 
     def auth(self):
         request_path = '{0}api2/json/access/ticket'.format(self.options.url)
@@ -292,8 +286,7 @@ def main_host(options, config_path):
 
     for node in proxmox_api.nodes().get_names():
         qemu_list = proxmox_api.node_qemu(node)
-        qemu = qemu_list.get_by_name(options.host)
-        if qemu:
+        if qemu := qemu_list.get_by_name(options.host):
             return qemu.get_variables()
 
     return {}
@@ -302,8 +295,9 @@ def main_host(options, config_path):
 def main():
     config_path = os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
-        os.path.splitext(os.path.basename(__file__))[0] + ".json"
+        f"{os.path.splitext(os.path.basename(__file__))[0]}.json",
     )
+
 
     bool_validate_cert = True
     if os.path.isfile(config_path):
@@ -334,10 +328,7 @@ def main():
         parser.print_help()
         sys.exit(1)
 
-    indent = None
-    if options.pretty:
-        indent = 2
-
+    indent = 2 if options.pretty else None
     print((json.dumps(data, indent=indent)))
 
 
